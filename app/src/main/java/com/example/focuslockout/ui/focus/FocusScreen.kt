@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -61,7 +62,7 @@ fun FocusScreen(activity: MainActivity) {
                 color = Color.White,
                 fontSize = 72.sp,
                 fontWeight = FontWeight.Light,
-                fontFeatureSettings = "tnum"
+                style = TextStyle(fontFeatureSettings = "tnum")
             )
             
             Spacer(modifier = Modifier.height(64.dp))
