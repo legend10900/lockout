@@ -75,77 +75,58 @@ class ShortsReelsBlockerService : AccessibilityService() {
         rootNode.recycle()
 
         if (shouldBlock) {
-            // Prevent app closure loop: Try to click the "Home" tab to return to the feed.
-            // If the Home tab isn't visible (e.g. opened from a DM), fallback to BACK button.
-            val homeClicked = tryClickHomeTab(rootNode)
-            if (!homeClicked) {
-                performGlobalAction(GLOBAL_ACTION_BACK)
-            }
-            
+            performGlobalAction(GLOBAL_ACTION_BACK)
             handler.post {
                 Toast.makeText(applicationContext, blockReason, Toast.LENGTH_SHORT).show()
             }
         }
     }
 
-    private fun tryClickHomeTab(node: AccessibilityNodeInfo): Boolean {
-        val homeNodes = node.findAccessibilityNodeInfosByText("Home")
-        for (home in homeNodes) {
-            if (home.isClickable) {
-                home.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                home.recycle()
+    private fun isYoutubeShorts(node: AccessibilityNodeInfo, packageName: String): Boolean {
+        val idsToTry = listOf(
+            "com.google.android.youtube:id/reel_recycler",
+            "$packageName:id/reel_recycler"
+        )
+        for (id in idsToTry) {
+            val reelRecyclers = node.findAccessibilityNodeInfosByViewId(id)
+            if (reelRecyclers.isNotEmpty()) {
+                reelRecyclers.forEach { it.recycle() }
                 return true
             }
-            var parent = home.parent
-            while (parent != null) {
-                if (parent.isClickable) {
-                    parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                    parent.recycle()
-                    home.recycle()
-                    return true
-                }
-                val oldParent = parent
-                parent = parent.parent
-                oldParent?.recycle()
-            }
-            home.recycle()
-        }
-        return false
-    }
-
-    private fun isYoutubeShorts(node: AccessibilityNodeInfo, packageName: String): Boolean {
-        // Find nodes matching typical Shorts identifiers
-        val reelRecyclers = node.findAccessibilityNodeInfosByViewId("$packageName:id/reel_recycler")
-        if (reelRecyclers.isNotEmpty()) {
-            reelRecyclers.forEach { it.recycle() }
-            return true
         }
 
-        // Checking for tab or descriptions indicating Shorts
         val shortsTabs = node.findAccessibilityNodeInfosByText("Shorts")
         var foundShorts = false
         for (tab in shortsTabs) {
-            if (tab.isSelected && tab.isClickable) { // Selected Shorts tab
+            if (tab.isSelected && tab.isClickable) {
                 foundShorts = true
             }
             tab.recycle()
         }
-        
         return foundShorts
     }
 
     private fun isInstagramReels(node: AccessibilityNodeInfo, packageName: String): Boolean {
-        // STRICT CHECK: clips_viewer_view_pager is the full-screen vertical pager.
-        // We removed clips_video_container because it triggers on inline feed videos.
-        val clipsPager = node.findAccessibilityNodeInfosByViewId("$packageName:id/clips_viewer_view_pager")
-        var isReels = clipsPager.isNotEmpty()
-        clipsPager.forEach { it.recycle() }
+        // Modded apps often retain the original "com.instagram.android" namespace for resource IDs.
+        val idsToTry = listOf(
+            "com.instagram.android:id/clips_viewer_view_pager",
+            "$packageName:id/clips_viewer_view_pager"
+        )
         
-        // Fallback: Check if the Reels tab in the bottom nav is currently selected.
+        var isReels = false
+        for (id in idsToTry) {
+            val clipsPager = node.findAccessibilityNodeInfosByViewId(id)
+            if (clipsPager.isNotEmpty()) {
+                isReels = true
+                clipsPager.forEach { it.recycle() }
+                break
+            }
+        }
+        
         if (!isReels) {
             val reelsTabs = node.findAccessibilityNodeInfosByText("Reels")
             for (tab in reelsTabs) {
-                if (tab.isSelected) {
+                if (tab.isSelected && tab.contentDescription?.toString()?.contains("Reels", ignoreCase = true) == true) {
                     isReels = true
                 }
                 tab.recycle()
