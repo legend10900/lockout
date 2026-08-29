@@ -35,11 +35,17 @@ class MainActivity : FragmentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val isFocusActive by FocusStateManager.isFocusActive.collectAsState()
+                    var showSettings by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
                     
                     if (isFocusActive) {
-                        FocusScreen(activity = this)
+                        FocusScreen(activity = this@MainActivity)
+                    } else if (showSettings) {
+                        com.example.focuslockout.ui.settings.ShortsBlockerSettingsScreen(
+                            blockerPreferences = com.example.focuslockout.data.BlockerPreferences(this@MainActivity),
+                            onBack = { showSettings = false }
+                        )
                     } else {
-                        SetupScreen(activity = this)
+                        SetupScreen(activity = this@MainActivity, onNavigateToSettings = { showSettings = true })
                     }
                 }
             }

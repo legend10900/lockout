@@ -85,4 +85,7 @@ dependencies {
   // Biometric and Icons
   implementation("androidx.biometric:biometric:1.2.0-alpha05")
   implementation("androidx.compose.material:material-icons-extended")
+  
+  // DataStore
+  implementation("androidx.datastore:datastore-preferences:1.0.0")
 }

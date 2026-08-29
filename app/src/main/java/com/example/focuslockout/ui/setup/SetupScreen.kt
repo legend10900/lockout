@@ -42,7 +42,7 @@ val NeonPink = Color(0xFFFF003C)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SetupScreen(activity: MainActivity) {
+fun SetupScreen(activity: MainActivity, onNavigateToSettings: () -> Unit = {}) {
     var totalMinutes by remember { mutableStateOf(15f) }
     
     var permissionsGranted by remember { mutableStateOf(false) }
@@ -81,7 +81,18 @@ fun SetupScreen(activity: MainActivity) {
             letterSpacing = 2.sp
         )
         
-        Spacer(modifier = Modifier.height(48.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        TextButton(onClick = onNavigateToSettings) {
+            Text(
+                "MODULES & PLUGINS >",
+                color = NeonCyan,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 14.sp
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(24.dp))
 
         // Futuristic Time Slider
         Text(

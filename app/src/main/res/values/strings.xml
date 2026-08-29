@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">Focus Lockout</string>
     <string name="accessibility_service_description">This service is required to enforce Focus Mode. It detects when you try to open other apps and brings the Focus Screen back to the front.</string>
+    <string name="shorts_blocker_service_description">Blocks short-form videos like YouTube Shorts and Instagram Reels to prevent doomscrolling.</string>
 </resources>
