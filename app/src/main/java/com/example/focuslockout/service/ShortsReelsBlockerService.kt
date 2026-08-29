@@ -43,8 +43,9 @@ class ShortsReelsBlockerService : AccessibilityService() {
         
         val packageName = event.packageName?.toString() ?: return
         
-        val isYoutube = packageName == "com.google.android.youtube"
-        val isInstagram = packageName == "com.instagram.android"
+        // Flexible matching for modded clients (e.g., InstaPro, Instander, ReVanced)
+        val isYoutube = packageName.contains("youtube", ignoreCase = true)
+        val isInstagram = packageName.contains("insta", ignoreCase = true)
         
         if (!isYoutube && !isInstagram) return
 
@@ -60,12 +61,12 @@ class ShortsReelsBlockerService : AccessibilityService() {
         var blockReason = ""
 
         if (isYoutube && isShortsBlockEnabled) {
-            if (isYoutubeShorts(rootNode)) {
+            if (isYoutubeShorts(rootNode, packageName)) {
                 shouldBlock = true
                 blockReason = "Shorts Blocked"
             }
         } else if (isInstagram && isReelsBlockEnabled) {
-            if (isInstagramReels(rootNode)) {
+            if (isInstagramReels(rootNode, packageName)) {
                 shouldBlock = true
                 blockReason = "Reels Blocked"
             }
@@ -81,9 +82,9 @@ class ShortsReelsBlockerService : AccessibilityService() {
         }
     }
 
-    private fun isYoutubeShorts(node: AccessibilityNodeInfo): Boolean {
+    private fun isYoutubeShorts(node: AccessibilityNodeInfo, packageName: String): Boolean {
         // Find nodes matching typical Shorts identifiers
-        val reelRecyclers = node.findAccessibilityNodeInfosByViewId("com.google.android.youtube:id/reel_recycler")
+        val reelRecyclers = node.findAccessibilityNodeInfosByViewId("$packageName:id/reel_recycler")
         if (reelRecyclers.isNotEmpty()) {
             reelRecyclers.forEach { it.recycle() }
             return true
@@ -102,9 +103,9 @@ class ShortsReelsBlockerService : AccessibilityService() {
         return foundShorts
     }
 
-    private fun isInstagramReels(node: AccessibilityNodeInfo): Boolean {
-        val clipsViewers = node.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_video_container")
-        val clipsPager = node.findAccessibilityNodeInfosByViewId("com.instagram.android:id/clips_viewer_view_pager")
+    private fun isInstagramReels(node: AccessibilityNodeInfo, packageName: String): Boolean {
+        val clipsViewers = node.findAccessibilityNodeInfosByViewId("$packageName:id/clips_video_container")
+        val clipsPager = node.findAccessibilityNodeInfosByViewId("$packageName:id/clips_viewer_view_pager")
         
         val isReels = clipsViewers.isNotEmpty() || clipsPager.isNotEmpty()
         

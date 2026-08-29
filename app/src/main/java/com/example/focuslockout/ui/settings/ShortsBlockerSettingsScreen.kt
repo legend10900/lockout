@@ -20,9 +20,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.focuslockout.data.BlockerPreferences
 import com.example.focuslockout.service.ShortsReelsBlockerService
-import com.example.focuslockout.ui.focus.NeonCyan
-import com.example.focuslockout.ui.focus.NeonPink
-import com.example.focuslockout.ui.focus.VoidBlack
+import com.example.focuslockout.ui.setup.NeonCyan
+import com.example.focuslockout.ui.setup.NeonPink
+import com.example.focuslockout.ui.setup.VoidBlack
 import kotlinx.coroutines.launch
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.view.accessibility.AccessibilityManager
