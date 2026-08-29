@@ -75,11 +75,42 @@ class ShortsReelsBlockerService : AccessibilityService() {
         rootNode.recycle()
 
         if (shouldBlock) {
-            performGlobalAction(GLOBAL_ACTION_BACK)
+            // Prevent app closure loop: Try to click the "Home" tab to return to the feed.
+            // If the Home tab isn't visible (e.g. opened from a DM), fallback to BACK button.
+            val homeClicked = tryClickHomeTab(rootNode)
+            if (!homeClicked) {
+                performGlobalAction(GLOBAL_ACTION_BACK)
+            }
+            
             handler.post {
                 Toast.makeText(applicationContext, blockReason, Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    private fun tryClickHomeTab(node: AccessibilityNodeInfo): Boolean {
+        val homeNodes = node.findAccessibilityNodeInfosByText("Home")
+        for (home in homeNodes) {
+            if (home.isClickable) {
+                home.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                home.recycle()
+                return true
+            }
+            var parent = home.parent
+            while (parent != null) {
+                if (parent.isClickable) {
+                    parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    parent.recycle()
+                    home.recycle()
+                    return true
+                }
+                val oldParent = parent
+                parent = parent.parent
+                oldParent?.recycle()
+            }
+            home.recycle()
+        }
+        return false
     }
 
     private fun isYoutubeShorts(node: AccessibilityNodeInfo, packageName: String): Boolean {
@@ -104,13 +135,22 @@ class ShortsReelsBlockerService : AccessibilityService() {
     }
 
     private fun isInstagramReels(node: AccessibilityNodeInfo, packageName: String): Boolean {
-        val clipsViewers = node.findAccessibilityNodeInfosByViewId("$packageName:id/clips_video_container")
+        // STRICT CHECK: clips_viewer_view_pager is the full-screen vertical pager.
+        // We removed clips_video_container because it triggers on inline feed videos.
         val clipsPager = node.findAccessibilityNodeInfosByViewId("$packageName:id/clips_viewer_view_pager")
-        
-        val isReels = clipsViewers.isNotEmpty() || clipsPager.isNotEmpty()
-        
-        clipsViewers.forEach { it.recycle() }
+        var isReels = clipsPager.isNotEmpty()
         clipsPager.forEach { it.recycle() }
+        
+        // Fallback: Check if the Reels tab in the bottom nav is currently selected.
+        if (!isReels) {
+            val reelsTabs = node.findAccessibilityNodeInfosByText("Reels")
+            for (tab in reelsTabs) {
+                if (tab.isSelected) {
+                    isReels = true
+                }
+                tab.recycle()
+            }
+        }
         
         return isReels
     }
