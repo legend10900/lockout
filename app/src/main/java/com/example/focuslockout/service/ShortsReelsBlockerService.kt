@@ -27,6 +27,10 @@ class ShortsReelsBlockerService : AccessibilityService() {
     private var lastCheckTime = 0L
     private val DEBOUNCE_MS = 50L // Fast for overlay tracking
     
+    // Cooldown to prevent continuous refreshing / repetitive clicking on Home
+    private var lastHomeClickTime = 0L
+    private val HOME_CLICK_COOLDOWN_MS = 2500L
+    
     private lateinit var blockerPreferences: BlockerPreferences
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     
@@ -96,10 +100,16 @@ class ShortsReelsBlockerService : AccessibilityService() {
             }
         }
         
+        val screenHeight = resources.displayMetrics.heightPixels
+        val bottomBarThreshold = (screenHeight * 0.80).toInt()
+
         if (!foundShorts) {
             val shortsTabs = rootNode.findAccessibilityNodeInfosByText("Shorts")
             for (tab in shortsTabs) {
-                if (tab.isSelected && tab.isClickable) {
+                val rect = Rect()
+                tab.getBoundsInScreen(rect)
+                val inBottomBar = rect.top >= bottomBarThreshold || rect.bottom >= screenHeight - 100
+                if (inBottomBar && tab.isSelected && tab.isClickable) {
                     foundShorts = true
                 }
                 tab.recycle()
@@ -107,12 +117,25 @@ class ShortsReelsBlockerService : AccessibilityService() {
         }
 
         if (foundShorts) {
+            val now = System.currentTimeMillis()
+            if (now - lastHomeClickTime < HOME_CLICK_COOLDOWN_MS) {
+                return
+            }
+            lastHomeClickTime = now
+
             var homeClicked = false
             val homeTabs = rootNode.findAccessibilityNodeInfosByText("Home")
             for (tab in homeTabs) {
-                if (tab.contentDescription?.toString()?.contains("Home", ignoreCase = true) == true) {
-                    if (clickNodeOrParent(tab)) {
-                        homeClicked = true
+                val rect = Rect()
+                tab.getBoundsInScreen(rect)
+                val inBottomBar = rect.top >= bottomBarThreshold || rect.bottom >= screenHeight - 100
+                if (inBottomBar && tab.contentDescription?.toString()?.contains("Home", ignoreCase = true) == true) {
+                    if (!tab.isSelected) {
+                        if (clickNodeOrParent(tab)) {
+                            homeClicked = true
+                        }
+                    } else {
+                        homeClicked = true // Already on Home
                     }
                 }
                 tab.recycle()
@@ -125,35 +148,67 @@ class ShortsReelsBlockerService : AccessibilityService() {
     }
 
     private fun handleInstagram(rootNode: AccessibilityNodeInfo, packageName: String) {
-        var inReelsTab = false
-        val reelsTabs = rootNode.findAccessibilityNodeInfosByText("Reels")
-        for (tab in reelsTabs) {
-            if (tab.isSelected && tab.contentDescription?.toString()?.contains("Reels", ignoreCase = true) == true) {
-                inReelsTab = true
+        val screenHeight = resources.displayMetrics.heightPixels
+        val bottomBarThreshold = (screenHeight * 0.80).toInt() // Bottom navigation bar is in lower 20% of screen
+
+        // 1. Check if the Home tab is already selected
+        var isHomeTabSelected = false
+        var homeTabNode: AccessibilityNodeInfo? = null
+        val homeTabs = rootNode.findAccessibilityNodeInfosByText("Home")
+        for (tab in homeTabs) {
+            val rect = Rect()
+            tab.getBoundsInScreen(rect)
+            val inBottomBar = rect.top >= bottomBarThreshold || rect.bottom >= screenHeight - 100
+            val desc = tab.contentDescription?.toString() ?: ""
+            if (inBottomBar && desc.contains("Home", ignoreCase = true)) {
+                if (tab.isSelected) {
+                    isHomeTabSelected = true
+                }
+                if (homeTabNode == null) {
+                    homeTabNode = AccessibilityNodeInfo.obtain(tab)
+                }
             }
             tab.recycle()
         }
 
-        // If user explicitly clicks the Reels tab, kick them back to Home Tab
-        if (inReelsTab) {
-            overlayManager?.hideOverlay()
-            var homeClicked = false
-            val homeTabs = rootNode.findAccessibilityNodeInfosByText("Home")
-            for (tab in homeTabs) {
-                if (tab.contentDescription?.toString()?.contains("Home", ignoreCase = true) == true) {
-                    if (clickNodeOrParent(tab)) {
-                        homeClicked = true
-                    }
+        // 2. Check if user is on the dedicated Reels tab in the bottom bar
+        var inReelsTab = false
+        if (!isHomeTabSelected) {
+            val reelsTabs = rootNode.findAccessibilityNodeInfosByText("Reels")
+            for (tab in reelsTabs) {
+                val rect = Rect()
+                tab.getBoundsInScreen(rect)
+                val inBottomBar = rect.top >= bottomBarThreshold || rect.bottom >= screenHeight - 100
+                val desc = tab.contentDescription?.toString() ?: ""
+                // Only consider it the Reels tab if it's strictly in the bottom bar
+                if (inBottomBar && desc.contains("Reels", ignoreCase = true) && tab.isSelected) {
+                    inReelsTab = true
                 }
                 tab.recycle()
             }
-            if (!homeClicked) {
-                performGlobalAction(GLOBAL_ACTION_BACK)
+        }
+
+        // 3. If user clicked into the Reels tab, kick them back to Home tab (obeying cooldown)
+        if (inReelsTab) {
+            overlayManager?.hideOverlay()
+            val now = System.currentTimeMillis()
+            if (now - lastHomeClickTime >= HOME_CLICK_COOLDOWN_MS) {
+                lastHomeClickTime = now
+                var clicked = false
+                if (homeTabNode != null) {
+                    clicked = clickNodeOrParent(homeTabNode)
+                }
+                if (!clicked) {
+                    performGlobalAction(GLOBAL_ACTION_BACK)
+                }
             }
+            homeTabNode?.recycle()
             return
         }
 
-        // We are on the Home Tab (or Feed). Add Black Overlay over the Reel Video!
+        homeTabNode?.recycle()
+
+        // 4. We are on the Home Feed (or another screen). Add Black Overlay over any Reel Video!
         val idsToTry = listOf(
             "com.instagram.android:id/clips_video_container",
             "$packageName:id/clips_video_container",
@@ -167,8 +222,8 @@ class ShortsReelsBlockerService : AccessibilityService() {
             for (video in videoContainers) {
                 val rect = Rect()
                 video.getBoundsInScreen(rect)
-                // Filter out tiny or invalid bounds
-                if (rect.height() > 200 && rect.width() > 200) {
+                // Only overlay if significantly sized and visible
+                if (rect.height() > 200 && rect.width() > 200 && rect.top < screenHeight && rect.bottom > 0) {
                     if (foundVideoRect == null) {
                         foundVideoRect = rect
                     }
@@ -218,7 +273,7 @@ class ReelOverlayManager(private val context: Context) {
             overlayView = FrameLayout(context).apply {
                 setBackgroundColor(Color.BLACK)
                 addView(TextView(context).apply {
-                    text = "REEL BLOCKED"
+                    text = "⚡ REEL BLOCKED"
                     setTextColor(Color.WHITE)
                     gravity = Gravity.CENTER
                     textSize = 18f
@@ -232,14 +287,19 @@ class ReelOverlayManager(private val context: Context) {
                 rect.height(),
                 WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 PixelFormat.TRANSLUCENT
             ).apply {
                 gravity = Gravity.TOP or Gravity.START
                 x = rect.left
                 y = rect.top
             }
-            windowManager.addView(overlayView, params)
+            try {
+                windowManager.addView(overlayView, params)
+            } catch (e: Exception) {
+                overlayView = null
+            }
         } else {
             val params = overlayView!!.layoutParams as WindowManager.LayoutParams
             if (params.width != rect.width() || params.height != rect.height() || params.x != rect.left || params.y != rect.top) {
@@ -247,14 +307,22 @@ class ReelOverlayManager(private val context: Context) {
                 params.height = rect.height()
                 params.x = rect.left
                 params.y = rect.top
-                windowManager.updateViewLayout(overlayView, params)
+                try {
+                    windowManager.updateViewLayout(overlayView, params)
+                } catch (e: Exception) {
+                    // Ignored
+                }
             }
         }
     }
     
     fun hideOverlay() {
-        overlayView?.let {
-            windowManager.removeView(it)
+        overlayView?.let { view ->
+            try {
+                windowManager.removeView(view)
+            } catch (e: Exception) {
+                // Ignored
+            }
             overlayView = null
         }
     }
